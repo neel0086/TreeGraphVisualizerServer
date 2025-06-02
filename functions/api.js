@@ -1,36 +1,41 @@
 import express from 'express';
-import serverless from 'serverless-http';
 import cors from 'cors';
 import bodyParser from 'body-parser';
-const app = express();
 import { router } from '../routes/route.js';
-app.use(express.json({
-    limit: '5mb',
-    verify: (req, res, buf) => {
-        // Capture the raw body as a string
-        req.rawBody = buf.toString();
-    },
-}));
 
-const allowedOrigins = ['https://quickfill.netlify.app', 'https://thequickfill.com','chrome-extension://gpiaempbpnopdfkohkkcocnlhbgllcjd','chrome-extension://ggmpijajgbagacnnnlghjjlneigfdbmh'];
-app.use(cors({
+const app = express();
+
+// CORS Setup
+const allowedOrigins = [
+  'https://quickfill.netlify.app',
+  'https://thequickfill.com',
+  'chrome-extension://gpiaempbpnopdfkohkkcocnlhbgllcjd',
+  'chrome-extension://ggmpijajgbagacnnnlghjjlneigfdbmh',
+];
+app.use(
+  cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true); // Allow if origin is in the allowed list or is undefined (e.g., Postman or server-to-server requests)
-        } else {
-            console.log("not allowed")
-            callback(new Error('Not allowed by CORS'));
-        }
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
     },
-    methods: ['GET', 'POST'], // Specify allowed HTTP methods
-    allowedHeaders: ['Content-Type', 'Authorization'], // Allow specific headers
-}));
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
 
-app.use(cors());
+// Middleware
+app.use(express.json({ limit: '5mb' }));
 app.use(bodyParser.json({ extended: true }));
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Routes
 app.use('/', router);
 
-app.use('/.netlify/functions/api', router);
-export const handler = serverless(app);
-export default app
+// Start server (required for Render)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
