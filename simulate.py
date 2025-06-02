@@ -3,83 +3,78 @@ import json
 
 sys.setrecursionlimit(10000)
 
-code = sys.stdin.read()
+# Read the full Python function from stdin
+code_input = sys.stdin.read()
 
-# Define globals for tracking
-tree = {
-    "nodes": [],
-    "edges": {},
-    "labels": {},
-    "root": None
-}
-node_id_counter = 0
+# Define containers to store tree information
+nodes = []
+edges = {}
+labels = {}
+node_id_counter = [0]  # Mutable container to keep track inside inner function
 
-def trace_calls(func):
-    def wrapper(*args):
-        global node_id_counter
-        current_id = node_id_counter
-        node_id_counter += 1
+# Global trace function
+def trace_calls(frame, event, arg):
+    if event != 'call':
+        return
 
-        label = f"{func.__name__}({', '.join(map(str, args))})"
-        tree["nodes"].append(current_id)
-        tree["labels"][current_id] = label
+    func_name = frame.f_code.co_name
+    args = frame.f_locals
 
-        if tree["root"] is None:
-            tree["root"] = current_id
+    # Assign a new node ID for this call
+    curr_id = node_id_counter[0]
+    node_id_counter[0] += 1
+    nodes.append(curr_id)
 
-        children = []
-        for result in func(*args):
-            children.append(result)
+    # Label it like func(3) or fib(3)
+    arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
+    labels[curr_id] = f"{func_name}({arg_str})"
 
-        if children:
-            tree["edges"][current_id] = children
+    # Attach to parent if any
+    parent_id = getattr(trace_calls, 'current', None)
+    if parent_id is not None:
+        if parent_id not in edges:
+            edges[parent_id] = []
+        edges[parent_id].append(curr_id)
 
-        return current_id
-    return wrapper
+    # Set current node as parent for children
+    trace_calls.current = curr_id
 
-# We'll inject this into the user's code
-injected_code = f'''
-import json
+    def local_trace(frame, event, arg):
+        return local_trace
 
-tree = {{"nodes": [], "edges": {{}}, "labels": {{}}, "root": None}}
-node_id_counter = 0
+    return trace_calls
 
-def trace_calls(func):
-    def wrapper(*args):
-        global node_id_counter
-        current_id = node_id_counter
-        node_id_counter += 1
-
-        label = f"{{func.__name__}}({{', '.join(map(str, args))}})"
-        tree["nodes"].append(current_id)
-        tree["labels"][current_id] = label
-
-        if tree["root"] is None:
-            tree["root"] = current_id
-
-        children = []
-        for result in func(*args):
-            children.append(result)
-
-        if children:
-            tree["edges"][current_id] = children
-
-        return current_id
-    return wrapper
-
-{code}
+# Prepare the execution environment
+exec_globals = {}
+exec_locals = {}
 
 try:
-    root = main()
-    output = {{
-        "nodes": tree["nodes"],
-        "edges": tree["edges"],
-        "labels": tree["labels"],
-        "root": tree["root"]
-    }}
-    print(json.dumps(output))
-except Exception as e:
-    print(json.dumps({{"error": str(e)}}))
-'''
+    # Compile and execute the code to define the function
+    exec(code_input, exec_globals, exec_locals)
 
-exec(injected_code)
+    # Get the user-defined function name (first function)
+    func_name = [k for k in exec_locals if callable(exec_locals[k])][0]
+    user_func = exec_locals[func_name]
+
+    # Set the tracer
+    import sys
+    sys.settrace(trace_calls)
+
+    # Call the user function (hardcoded example for now)
+    user_func(3)
+
+    sys.settrace(None)
+
+    result = {
+        "nodes": nodes,
+        "edges": edges,
+        "labels": labels,
+        "root": 0
+    }
+
+    print(json.dumps(result))
+
+except Exception as e:
+    sys.settrace(None)
+    print(json.dumps({"error": str(e)}))
+    sys.exit(1)
