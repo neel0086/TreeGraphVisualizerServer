@@ -11,6 +11,7 @@ const allowedOrigins = [
   'https://thequickfill.com',
   'chrome-extension://gpiaempbpnopdfkohkkcocnlhbgllcjd',
   'chrome-extension://ggmpijajgbagacnnnlghjjlneigfdbmh',
+  'http://localhost:3001/recursionTree'
 ];
 app.use(
   cors({

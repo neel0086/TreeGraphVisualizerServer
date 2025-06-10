@@ -1,46 +1,39 @@
-import { spawn } from "child_process";
+import { spawnSync } from "child_process";
+import path from "path";
 
 export const codeRunner = async (req, res) => {
-  const { code, funcName, arg } = req.body;
+  const code= JSON.parse(req.body.code);
 
-  if (!code || !funcName || arg === undefined) {
-    return res.status(400).json({ error: "Missing code, funcName or arg." });
+  if (!code) {
+    return res.status(400).json({ error: "No code provided" });
   }
 
+  const pythonScriptPath = "simulate.py";
+
   try {
-    const py = spawn("python3", ["simulate.py"]);
-
-    let output = "";
-    let error = "";
-
-    py.stdout.on("data", (data) => {
-      output += data.toString();
+    const result = spawnSync("python", [pythonScriptPath], {
+      input: code,
+      encoding: "utf-8",
     });
 
-    py.stderr.on("data", (data) => {
-      error += data.toString();
-    });
+    if (result.error) {
+      return res.status(500).json({ error: "Python execution error", details: result.error });
+    }
 
-    py.on("close", () => {
-      if (error) {
-        console.error("Python error:", error);
-        return res.status(500).json({ error: "Python script error", details: error });
-      }
+    const output = result.stdout.trim();
+    const errorOutput = result.stderr.trim();
 
-      try {
-        const result = JSON.parse(output);
-        res.json(result);
-      } catch (err) {
-        console.error("Invalid JSON:", output);
-        res.status(500).json({ error: "Invalid response from Python" });
-      }
-    });
+    if (errorOutput) {
+      return res.status(500).json({ error: "Python stderr", details: errorOutput });
+    }
 
-    // Send data as JSON string to simulate.py
-    py.stdin.write(JSON.stringify({ code, funcName, arg }));
-    py.stdin.end();
+    const parsed = JSON.parse(output);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+
+    return res.json(parsed);
   } catch (err) {
-    console.error("Server error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Unexpected server error", details: err.message });
   }
 };
